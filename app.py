@@ -122,7 +122,6 @@ DAFTAR_ANGGOTA = [
     "Azzahra Raissa Putri Fiedi Elysia",
     "Anisah Dyah Pramesti",
     "Oktaviana Eka Juna",
-
 ]
 
 # Pilihan Tema Karakter Cute
@@ -170,7 +169,6 @@ def simpan_data_otomatis(nama, tanggal, status, karakter, catatan):
             ]
             creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
             client = gspread.authorize(creds)
-            # Ganti nama file sesuai nama Google Sheets milikmu
             sheet = client.open("Absensi Duta Literasi MTsN 1 Jember").sheet1
             sheet.append_row([
                 tanggal.strftime("%Y-%m-%d"),
@@ -207,7 +205,6 @@ st.markdown("""
 
 # Form Kehadiran
 with st.container():
-    # Pilih Karakter Mood Hari Ini
     karakter_pilihan = st.selectbox(
         "🎀 Pilih Karakter Teman Piket Hari Ini:",
         list(TEMA_KARAKTER.keys())
@@ -215,24 +212,23 @@ with st.container():
     info_karakter = TEMA_KARAKTER[karakter_pilihan]
     st.info(f"{info_karakter['emoji']} **{info_karakter['quotes']}**")
 
-    # Input Nama Siswa
     nama_siswa = st.selectbox("👤 Nama Anggota Duta Literasi:", DAFTAR_ANGGOTA)
 
-    # Input Tanggal Kehadiran
-    tanggal_hadir = st.date_input("📅 Tanggal Kehadiran:", datetime.now())
+    tanggal_hadir = st.date_input(
+        "📅 Tanggal Kehadiran:",
+        datetime.now(),
+        format="DD/MM/YYYY"
+    )
 
-    # Input Status Kehadiran
     status_kehadiran = st.radio(
         "📌 Status Kehadiran:",
         ["✅ Hadir", "✉️ Izin", "🤒 Sakit", "❌ Alpha"],
         horizontal=True
     )
 
-    # Catatan Tambahan (Opsional)
     catatan = st.text_input("📝 Catatan / Keterangan (Opsional):", placeholder="Contoh: Piket jaga perpustakaan jam istirahat")
 
     st.write("")
-    # Tombol Submit
     if st.button("💖 Simpan Kehadiran Sekarang"):
         if nama_siswa == "-- Pilih Nama Anggota --":
             st.warning("⚠️ Pilih nama kamu dulu ya sebelum menyimpan!")
@@ -243,22 +239,32 @@ with st.container():
             st.caption(f"Status Penyimpanan: {hasil}")
 
 # ==========================================
-# 5. REKAP DATA REAL-TIME & UNDUH EXCEL/CSV
+# 5. REKAP DATA BERDASARKAN TANGGAL & UNDUH
 # ==========================================
 st.markdown("---")
-st.subheader("📊 Rekap Kehadiran Hari Ini")
+st.subheader("📊 Rekap Kehadiran Duta Literasi")
 
 if os.path.exists(FILE_LOKAL):
     df_rekap = pd.read_csv(FILE_LOKAL)
-    st.dataframe(df_rekap.tail(10), use_container_width=True)
-    
-    # Tombol Unduh Rekap untuk Laporan
-    csv_data = df_rekap.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Unduh Rekap Absensi (.CSV / Excel)",
-        data=csv_data,
-        file_name=f"Rekap_Duta_Literasi_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv"
+    df_rekap["Tanggal"] = df_rekap["Tanggal"].astype(str)
+
+    # Pilih Tanggal untuk Melihat Rekapan (Menampilkan Tanggal, Bulan, Tahun)
+    tanggal_filter = st.date_input(
+        "🔍 Pilih Tanggal, Bulan & Tahun Rekap:",
+        value=datetime.now(),
+        format="DD/MM/YYYY",
+        key="filter_tanggal_rekap"
     )
-else:
-    st.caption("Belum ada data kehadiran yang masuk hari ini. Yuk isi absen pertama!")
+
+    tanggal_str = tanggal_filter.strftime("%Y-%m-%d")
+    tanggal_tampil = tanggal_filter.strftime("%d-%m-%Y")
+
+    # Filter data sesuai tanggal yang dipilih
+    df_filtered = df_rekap[df_rekap["Tanggal"] == tanggal_str]
+
+    st.markdown(f"**Menampilkan data tanggal: `{tanggal_tampil}`**")
+
+    if not df_filtered.empty:
+        # Ringkasan singkat jumlah per status pada tanggal tersebut
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("✅ Hadir", len(df_filtered[df_filtered
