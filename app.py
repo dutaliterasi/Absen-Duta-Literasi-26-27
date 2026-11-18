@@ -1,4 +1,4 @@
-import datetime
+From datetime import datetime
 import os
 import pandas as pd
 import requests
@@ -159,7 +159,7 @@ TEMA_KARAKTER = {
 }
 
 # ==========================================
-# 3. KONFIGURASI GOOGLE FORM & SHEETS
+# 3. KONFIGURASI GOOGLE FORM & PENYIMPANAN
 # ==========================================
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeCb02zXXPpwmd3h-N359jULDITYXflWrZUfFajGSOZFJpQJA/formResponse"
 SHEET_ID = "1NIXzAi9Vcb7xIMH5XVQlyJklF8ZorvxYM8Cn_WZcfyw"
@@ -171,7 +171,7 @@ def simpan_data_otomatis(nama, tanggal, status, karakter, catatan):
   waktu_input = datetime.now().strftime("%H:%M:%S")
   tgl_str = tanggal.strftime("%Y-%m-%d")
 
-  # A. Simpan ke Backup Lokal
+  # 1. Simpan ke Backup Lokal
   data_baru = pd.DataFrame([{
       "Tanggal": tgl_str,
       "Waktu Input": waktu_input,
@@ -188,7 +188,7 @@ def simpan_data_otomatis(nama, tanggal, status, karakter, catatan):
     data_gabungan = data_baru
   data_gabungan.to_csv(FILE_LOKAL, index=False)
 
-  # B. Kirim Permanen ke Google Sheets via Google Form
+  # 2. Kirim Permanen ke Google Sheets via Google Form
   catatan_lengkap = f"[{tanggal.strftime('%d-%m-%Y')}] {catatan}".strip()
   form_data = {
       "entry.1605593113": nama,
@@ -200,17 +200,15 @@ def simpan_data_otomatis(nama, tanggal, status, karakter, catatan):
   try:
     res = requests.post(FORM_URL, data=form_data, timeout=10)
     if res.status_code == 200:
-      return "Berhasil tersimpan permanen ke Google Sheets! ☁️✨"
+      return "Berhasil tersimpan ke Google Sheets & Lokal! ☁️✨"
     else:
-      return (
-          f"Tersimpan di backup lokal (Kode respons Form: {res.status_code})"
-      )
+      return "Tersimpan di backup lokal (Gagal kirim ke Form)."
   except Exception as e:
-    return f"Tersimpan di backup lokal (Gagal konek ke Google Sheets: {e})"
+    return f"Tersimpan di backup lokal (Error koneksi: {e})"
 
 
 def muat_data_rekap():
-  # Coba baca dari Google Sheets dulu agar data permanen dan tidak hilang saat restart
+  # Ambil data langsung dari Google Sheets (jika tersambung)
   try:
     df_gs = pd.read_csv(CSV_READ_URL)
     if not df_gs.empty and "Timestamp" in df_gs.columns:
@@ -241,7 +239,7 @@ def muat_data_rekap():
   except Exception:
     pass
 
-  # Jika Google Sheets belum terbaca, gunakan file lokal
+  # Fallback ke file CSV lokal jika Sheets belum merespons
   if os.path.exists(FILE_LOKAL):
     return pd.read_csv(FILE_LOKAL)
   return pd.DataFrame()
@@ -314,7 +312,7 @@ with st.container():
       st.caption(f"Status Penyimpanan: {hasil}")
 
 # ==========================================
-# 5. REKAP DATA BERDASARKAN TANGGAL & UNDUH
+# 5. REKAP DATA DENGAN FILTER PILIH TANGGAL
 # ==========================================
 st.markdown("---")
 st.subheader("📊 Rekap Kehadiran Duta Literasi")
@@ -324,8 +322,9 @@ df_rekap = muat_data_rekap()
 if not df_rekap.empty:
   df_rekap["Tanggal"] = df_rekap["Tanggal"].astype(str)
 
+  # Fitur Filter Tanggal (Sesuai Permintaan)
   tanggal_filter = st.date_input(
-      "🔍 Pilih Tanggal, Bulan & Tahun Rekap:",
+      "🔍 Pilih Tanggal Rekap:",
       value=datetime.now(),
       format="DD/MM/YYYY",
       key="filter_tanggal_rekap",
@@ -334,11 +333,13 @@ if not df_rekap.empty:
   tanggal_str = tanggal_filter.strftime("%Y-%m-%d")
   tanggal_tampil = tanggal_filter.strftime("%d-%m-%Y")
 
+  # Filter data khusus tanggal yang dipilih user
   df_filtered = df_rekap[df_rekap["Tanggal"] == tanggal_str]
 
-  st.markdown(f"**Menampilkan data tanggal: `{tanggal_tampil}`**")
+  st.markdown(f"**Menampilkan data khusus tanggal: `{tanggal_tampil}`**")
 
   if not df_filtered.empty:
+    # Metrik ringkas jumlah status pada tanggal tersebut
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("✅ Hadir", len(df_filtered[df_filtered["Status"] == "✅ Hadir"]))
     col2.metric("✉️ Izin", len(df_filtered[df_filtered["Status"] == "✉️ Izin"]))
@@ -347,6 +348,7 @@ if not df_rekap.empty:
 
     st.dataframe(df_filtered, use_container_width=True, hide_index=True)
 
+    # Tombol Unduh Khusus Tanggal Terpilih
     csv_harian = df_filtered.to_csv(index=False).encode("utf-8")
     st.download_button(
         label=f"📥 Unduh Rekap Tanggal {tanggal_tampil} (.CSV)",
@@ -356,12 +358,13 @@ if not df_rekap.empty:
         key="download_harian",
     )
   else:
-    st.info(f"📭 Tidak ada catatan absensi pada tanggal **{tanggal_tampil}**.")
+    st.info(f"📭 Belum ada data absensi untuk tanggal **{tanggal_tampil}**.")
 
+  # Opsi unduh keseluruhan data
   with st.expander("📂 Unduh Semua Data Rekap (Keseluruhan)"):
     csv_semua = df_rekap.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="📥 Unduh Semua Rekap Absensi (.CSV / Excel)",
+        label="📥 Unduh Semua Rekap Absensi (.CSV)",
         data=csv_semua,
         file_name=(
             f"Rekap_Semua_Duta_Literasi_{datetime.now().strftime('%d-%m-%Y')}.csv"
@@ -371,3 +374,4 @@ if not df_rekap.empty:
     )
 else:
   st.caption("Belum ada data kehadiran yang masuk. Yuk isi absen pertama!")
+    
