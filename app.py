@@ -1,9 +1,8 @@
-import streamlit as st
-import pandas as pd
-from datetime import datetime
+From datetime import datetime
 import os
-import gspread
-from google.oauth2.service_account import Credentials
+import pandas as pd
+import requests
+import streamlit as st
 
 # ==========================================
 # 1. KONFIGURASI HALAMAN & TEMA CUTE
@@ -12,11 +11,12 @@ st.set_page_config(
     page_title="Absensi Duta Literasi MTsN 1 Jember",
     page_icon="📚",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
 # Custom CSS untuk tampilan Mobile-Friendly & Pastel Cute
-st.markdown("""
+st.markdown(
+    """
     <style>
     /* Latar Belakang Pastel Lembut */
     .stApp {
@@ -77,10 +77,12 @@ st.markdown("""
         border: 1px solid #F48FB1;
     }
     </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ==========================================
-# 2. DATA ANGGOTA DUTA LITERASI (SILAKAN EDIT)
+# 2. DATA ANGGOTA DUTA LITERASI
 # ==========================================
 DAFTAR_ANGGOTA = [
     "-- Pilih Nama Anggota --",
@@ -126,68 +128,130 @@ DAFTAR_ANGGOTA = [
 
 # Pilihan Tema Karakter Cute
 TEMA_KARAKTER = {
-    "🐻 Masha & The Bear (Ceria & Usil)": {"emoji": "👧🏼🐻", "quotes": "Semangat baca buku bareng Masha dan Beruang!"},
-    "🦈 Baby Shark (Doo Doo Doo!)": {"emoji": "🦈🌊", "quotes": "Literasi seru, doo doo doo doo doo doo!"},
-    "⚡ Pokémon (Gotta Read 'Em All!)": {"emoji": "⚡🔴", "quotes": "Pika-Pika! Kumpulkan ilmu sebanyak menangkap Pokémon!"},
-    "👦👦 Upin & Ipin (Betul! Betul! Betul!)": {"emoji": "🐔🍧", "quotes": "Membaca jambatan ilmu! Betul, betul, betul!"},
-    "🧢 BoBoiBoy (Kuasa Elemental!)": {"emoji": "⚡🌪️🔥", "quotes": "BoBoiBoy Kuasa Literasi! Terbaik!"},
-    "🐭 Mickey Mouse (Klasik Disney)": {"emoji": "🎀🐭", "quotes": "Oh Boy! Waktunya menjaga perpustakaan dengan ceria!"},
-    "👑 Sofia the First (Putri Kerajaan)": {"emoji": "👑💜", "quotes": "Setiap halaman buku membuka dunia kerajaan baru!"}
+    "🐻 Masha & The Bear (Ceria & Usil)": {
+        "emoji": "👧🏼🐻",
+        "quotes": "Semangat baca buku bareng Masha dan Beruang!",
+    },
+    "🦈 Baby Shark (Doo Doo Doo!)": {
+        "emoji": "🦈🌊",
+        "quotes": "Literasi seru, doo doo doo doo doo doo!",
+    },
+    "⚡ Pokémon (Gotta Read 'Em All!)": {
+        "emoji": "⚡🔴",
+        "quotes": "Pika-Pika! Kumpulkan ilmu sebanyak menangkap Pokémon!",
+    },
+    "👦👦 Upin & Ipin (Betul! Betul! Betul!)": {
+        "emoji": "🐔🍧",
+        "quotes": "Membaca jambatan ilmu! Betul, betul, betul!",
+    },
+    "🧢 BoBoiBoy (Kuasa Elemental!)": {
+        "emoji": "⚡🌪️🔥",
+        "quotes": "BoBoiBoy Kuasa Literasi! Terbaik!",
+    },
+    "🐭 Mickey Mouse (Klasik Disney)": {
+        "emoji": "🎀🐭",
+        "quotes": "Oh Boy! Waktunya menjaga perpustakaan dengan ceria!",
+    },
+    "👑 Sofia the First (Putri Kerajaan)": {
+        "emoji": "👑💜",
+        "quotes": "Setiap halaman buku membuka dunia kerajaan baru!",
+    },
 }
 
 # ==========================================
-# 3. FUNGSI PENYIMPANAN OTOMATIS & GOOGLE SHEETS
+# 3. KONFIGURASI GOOGLE FORM & SHEETS
 # ==========================================
+FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeCb02zXXPpwmd3h-N359jULDITYXflWrZUfFajGSOZFJpQJA/formResponse"
+SHEET_ID = "1NIXzAi9Vcb7xIMH5XVQlyJklF8ZorvxYM8Cn_WZcfyw"
+CSV_READ_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Form%20Responses%201"
 FILE_LOKAL = "rekap_absensi_duta_literasi.csv"
 
+
 def simpan_data_otomatis(nama, tanggal, status, karakter, catatan):
-    waktu_input = datetime.now().strftime("%H:%M:%S")
-    data_baru = pd.DataFrame([{
-        "Tanggal": tanggal.strftime("%Y-%m-%d"),
-        "Waktu Input": waktu_input,
-        "Nama Siswa": nama,
-        "Status": status,
-        "Tema Karakter": karakter,
-        "Catatan": catatan
-    }])
+  waktu_input = datetime.now().strftime("%H:%M:%S")
+  tgl_str = tanggal.strftime("%Y-%m-%d")
 
-    # A. Penyimpanan Otomatis ke File Lokal (Backup Aman)
-    if os.path.exists(FILE_LOKAL):
-        data_lama = pd.read_csv(FILE_LOKAL)
-        data_gabungan = pd.concat([data_lama, data_baru], ignore_index=True)
+  # A. Simpan ke Backup Lokal
+  data_baru = pd.DataFrame([{
+      "Tanggal": tgl_str,
+      "Waktu Input": waktu_input,
+      "Nama Siswa": nama,
+      "Status": status,
+      "Tema Karakter": karakter,
+      "Catatan": catatan,
+  }])
+
+  if os.path.exists(FILE_LOKAL):
+    data_lama = pd.read_csv(FILE_LOKAL)
+    data_gabungan = pd.concat([data_lama, data_baru], ignore_index=True)
+  else:
+    data_gabungan = data_baru
+  data_gabungan.to_csv(FILE_LOKAL, index=False)
+
+  # B. Kirim Permanen ke Google Sheets via Google Form
+  catatan_lengkap = f"[{tanggal.strftime('%d-%m-%Y')}] {catatan}".strip()
+  form_data = {
+      "entry.1605593113": nama,
+      "entry.1825141577": status,
+      "entry.1914097499": karakter,
+      "entry.1864582280": catatan_lengkap,
+  }
+
+  try:
+    res = requests.post(FORM_URL, data=form_data, timeout=10)
+    if res.status_code == 200:
+      return "Berhasil tersimpan permanen ke Google Sheets! ☁️✨"
     else:
-        data_gabungan = data_baru
-    data_gabungan.to_csv(FILE_LOKAL, index=False)
+      return (
+          f"Tersimpan di backup lokal (Kode respons Form: {res.status_code})"
+      )
+  except Exception as e:
+    return f"Tersimpan di backup lokal (Gagal konek ke Google Sheets: {e})"
 
-    # B. Sinkronisasi ke Google Sheets (Jika credentials.json tersedia)
-    status_gsheet = "Tersimpan di HP/Server Lokal (Mode Offline/Backup)"
-    if os.path.exists("credentials.json"):
-        try:
-            scope = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
-            client = gspread.authorize(creds)
-            sheet = client.open("Absensi Duta Literasi MTsN 1 Jember").sheet1
-            sheet.append_row([
-                tanggal.strftime("%Y-%m-%d"),
-                waktu_input,
-                nama,
-                status,
-                karakter,
-                catatan
-            ])
-            status_gsheet = "Berhasil tersinkronisasi langsung ke Google Sheets! ☁️"
-        except Exception as e:
-            status_gsheet = f"Tersimpan di Lokal (Google Sheets belum terhubung: {e})"
-            
-    return status_gsheet
+
+def muat_data_rekap():
+  # Coba baca dari Google Sheets dulu agar data permanen dan tidak hilang saat restart
+  try:
+    df_gs = pd.read_csv(CSV_READ_URL)
+    if not df_gs.empty and "Timestamp" in df_gs.columns:
+      df_gs["Timestamp_dt"] = pd.to_datetime(
+          df_gs["Timestamp"], errors="coerce"
+      )
+      df_gs["Tanggal"] = df_gs["Timestamp_dt"].dt.strftime("%Y-%m-%d")
+      df_gs["Waktu Input"] = df_gs["Timestamp_dt"].dt.strftime("%H:%M:%S")
+      df_gs = df_gs.rename(
+          columns={
+              "Nama": "Nama Siswa",
+              "Karakter": "Tema Karakter",
+          }
+      )
+      kolom_tampil = [
+          c
+          for c in [
+              "Tanggal",
+              "Waktu Input",
+              "Nama Siswa",
+              "Status",
+              "Tema Karakter",
+              "Catatan",
+          ]
+          if c in df_gs.columns
+      ]
+      return df_gs[kolom_tampil]
+  except Exception:
+    pass
+
+  # Jika Google Sheets belum terbaca, gunakan file lokal
+  if os.path.exists(FILE_LOKAL):
+    return pd.read_csv(FILE_LOKAL)
+  return pd.DataFrame()
+
 
 # ==========================================
 # 4. TAMPILAN ANTARMUKA (UI) MOBILE FRIENDLY
 # ==========================================
-st.markdown("""
+st.markdown(
+    """
     <div class="main-card">
         <div class="title-text">📚 Duta Literasi Perpustakaan</div>
         <div class="subtitle-text">MTs Negeri 1 Jember ✨</div>
@@ -201,42 +265,53 @@ st.markdown("""
             <span class="char-badge">👑 Sofia</span>
         </div>
     </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Form Kehadiran
 with st.container():
-    karakter_pilihan = st.selectbox(
-        "🎀 Pilih Karakter Teman Piket Hari Ini:",
-        list(TEMA_KARAKTER.keys())
-    )
-    info_karakter = TEMA_KARAKTER[karakter_pilihan]
-    st.info(f"{info_karakter['emoji']} **{info_karakter['quotes']}**")
+  karakter_pilihan = st.selectbox(
+      "🎀 Pilih Karakter Teman Piket Hari Ini:", list(TEMA_KARAKTER.keys())
+  )
+  info_karakter = TEMA_KARAKTER[karakter_pilihan]
+  st.info(f"{info_karakter['emoji']} **{info_karakter['quotes']}**")
 
-    nama_siswa = st.selectbox("👤 Nama Anggota Duta Literasi:", DAFTAR_ANGGOTA)
+  nama_siswa = st.selectbox("👤 Nama Anggota Duta Literasi:", DAFTAR_ANGGOTA)
 
-    tanggal_hadir = st.date_input(
-        "📅 Tanggal Kehadiran:",
-        datetime.now(),
-        format="DD/MM/YYYY"
-    )
+  tanggal_hadir = st.date_input(
+      "📅 Tanggal Kehadiran:", datetime.now(), format="DD/MM/YYYY"
+  )
 
-    status_kehadiran = st.radio(
-        "📌 Status Kehadiran:",
-        ["✅ Hadir", "✉️ Izin", "🤒 Sakit", "❌ Alpha"],
-        horizontal=True
-    )
+  status_kehadiran = st.radio(
+      "📌 Status Kehadiran:",
+      ["✅ Hadir", "✉️ Izin", "🤒 Sakit", "❌ Alpha"],
+      horizontal=True,
+  )
 
-    catatan = st.text_input("📝 Catatan / Keterangan (Opsional):", placeholder="Contoh: Piket jaga perpustakaan jam istirahat")
+  catatan = st.text_input(
+      "📝 Catatan / Keterangan (Opsional):",
+      placeholder="Contoh: Piket jaga perpustakaan jam istirahat",
+  )
 
-    st.write("")
-    if st.button("💖 Simpan Kehadiran Sekarang"):
-        if nama_siswa == "-- Pilih Nama Anggota --":
-            st.warning("⚠️ Pilih nama kamu dulu ya sebelum menyimpan!")
-        else:
-            hasil = simpan_data_otomatis(nama_siswa, tanggal_hadir, status_kehadiran, karakter_pilihan, catatan)
-            st.balloons()
-            st.success(f"Yeay! Absensi **{nama_siswa}** ({status_kehadiran}) sudah dicatat otomatis!")
-            st.caption(f"Status Penyimpanan: {hasil}")
+  st.write("")
+  if st.button("💖 Simpan Kehadiran Sekarang"):
+    if nama_siswa == "-- Pilih Nama Anggota --":
+      st.warning("⚠️ Pilih nama kamu dulu ya sebelum menyimpan!")
+    else:
+      hasil = simpan_data_otomatis(
+          nama_siswa,
+          tanggal_hadir,
+          status_kehadiran,
+          karakter_pilihan,
+          catatan,
+      )
+      st.balloons()
+      st.success(
+          f"Yeay! Absensi **{nama_siswa}** ({status_kehadiran}) sudah dicatat"
+          " otomatis!"
+      )
+      st.caption(f"Status Penyimpanan: {hasil}")
 
 # ==========================================
 # 5. REKAP DATA BERDASARKAN TANGGAL & UNDUH
@@ -244,27 +319,55 @@ with st.container():
 st.markdown("---")
 st.subheader("📊 Rekap Kehadiran Duta Literasi")
 
-if os.path.exists(FILE_LOKAL):
-    df_rekap = pd.read_csv(FILE_LOKAL)
-    df_rekap["Tanggal"] = df_rekap["Tanggal"].astype(str)
+df_rekap = muat_data_rekap()
 
-    # Pilih Tanggal untuk Melihat Rekapan (Menampilkan Tanggal, Bulan, Tahun)
-    tanggal_filter = st.date_input(
-        "🔍 Pilih Tanggal, Bulan & Tahun Rekap:",
-        value=datetime.now(),
-        format="DD/MM/YYYY",
-        key="filter_tanggal_rekap"
+if not df_rekap.empty:
+  df_rekap["Tanggal"] = df_rekap["Tanggal"].astype(str)
+
+  tanggal_filter = st.date_input(
+      "🔍 Pilih Tanggal, Bulan & Tahun Rekap:",
+      value=datetime.now(),
+      format="DD/MM/YYYY",
+      key="filter_tanggal_rekap",
+  )
+
+  tanggal_str = tanggal_filter.strftime("%Y-%m-%d")
+  tanggal_tampil = tanggal_filter.strftime("%d-%m-%Y")
+
+  df_filtered = df_rekap[df_rekap["Tanggal"] == tanggal_str]
+
+  st.markdown(f"**Menampilkan data tanggal: `{tanggal_tampil}`**")
+
+  if not df_filtered.empty:
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("✅ Hadir", len(df_filtered[df_filtered["Status"] == "✅ Hadir"]))
+    col2.metric("✉️ Izin", len(df_filtered[df_filtered["Status"] == "✉️ Izin"]))
+    col3.metric("🤒 Sakit", len(df_filtered[df_filtered["Status"] == "🤒 Sakit"]))
+    col4.metric("❌ Alpha", len(df_filtered[df_filtered["Status"] == "❌ Alpha"]))
+
+    st.dataframe(df_filtered, use_container_width=True, hide_index=True)
+
+    csv_harian = df_filtered.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label=f"📥 Unduh Rekap Tanggal {tanggal_tampil} (.CSV)",
+        data=csv_harian,
+        file_name=f"Rekap_Duta_Literasi_{tanggal_tampil}.csv",
+        mime="text/csv",
+        key="download_harian",
     )
+  else:
+    st.info(f"📭 Tidak ada catatan absensi pada tanggal **{tanggal_tampil}**.")
 
-    tanggal_str = tanggal_filter.strftime("%Y-%m-%d")
-    tanggal_tampil = tanggal_filter.strftime("%d-%m-%Y")
-
-    # Filter data sesuai tanggal yang dipilih
-    df_filtered = df_rekap[df_rekap["Tanggal"] == tanggal_str]
-
-    st.markdown(f"**Menampilkan data tanggal: `{tanggal_tampil}`**")
-
-    if not df_filtered.empty:
-        # Ringkasan singkat jumlah per status pada tanggal tersebut
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("✅ Hadir", len(df_filtered[df_filtered
+  with st.expander("📂 Unduh Semua Data Rekap (Keseluruhan)"):
+    csv_semua = df_rekap.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Unduh Semua Rekap Absensi (.CSV / Excel)",
+        data=csv_semua,
+        file_name=(
+            f"Rekap_Semua_Duta_Literasi_{datetime.now().strftime('%d-%m-%Y')}.csv"
+        ),
+        mime="text/csv",
+        key="download_semua",
+    )
+else:
+  st.caption("Belum ada data kehadiran yang masuk. Yuk isi absen pertama!")
